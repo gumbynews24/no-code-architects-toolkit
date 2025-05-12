@@ -1,10 +1,6 @@
 # Base image
-FROM nvidia/cuda:12.9.0-cudnn-devel-ubuntu24.04
+FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu24.04
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends software-properties-common && \
-    add-apt-repository universe && \
-    apt-get update
 
 
 # Install system dependencies, build tools, and libraries
@@ -49,6 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libharfbuzz-dev \
     python3 \
     python3-pip \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/* 
 
 # Install SRT from source (latest version using cmake)
@@ -182,10 +179,16 @@ RUN mkdir -p ${WHISPER_CACHE_DIR}
 COPY requirements.txt .
 
 # Install Python dependencies, upgrade pip 
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install openai-whisper && \
-    pip install jsonschema 
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --upgrade pip && \
+    /opt/venv/bin/pip install -r requirements.txt && \
+    /opt/venv/bin/pip install openai-whisper jsonschema ffmpeg-python torch 
+
+# Set environment path for venv
+ENV PATH="/opt/venv/bin:$PATH"
+ENV WHISPER_MODEL="base"
+
+RUN ffmpeg -version
 
 # Create the appuser 
 RUN useradd -m appuser 
@@ -196,7 +199,7 @@ RUN chown appuser:appuser /app
 # Important: Switch to the appuser before downloading the model
 USER appuser
 
-RUN python -c "import os; print(os.environ.get('WHISPER_CACHE_DIR')); import whisper; whisper.load_model(os.environ.get('WHISPER_MODEL'))"
+RUN /opt/venv/bin/python -c "import os; print(os.environ.get('WHISPER_CACHE_DIR')); import whisper; whisper.load_model(os.environ.get('WHISPER_MODEL'))"
 
 # Copy the rest of the application code
 COPY . .
@@ -208,7 +211,7 @@ EXPOSE 8080
 ENV PYTHONUNBUFFERED=1
 
 RUN echo '#!/bin/bash\n\
-gunicorn --bind 0.0.0.0:8080 \
+/opt/venv/bin/gunicorn --bind 0.0.0.0:8080 \
     --workers ${GUNICORN_WORKERS:-2} \
     --timeout ${GUNICORN_TIMEOUT:-300} \
     --worker-class sync \
