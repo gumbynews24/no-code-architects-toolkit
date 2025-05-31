@@ -2,6 +2,9 @@
 #FROM python:3.9-slim
 FROM docker.n8n.io/n8nio/n8n
 
+# Switch to root to install packages
+USER root
+
 # Install system dependencies, build tools, and libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
